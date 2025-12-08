@@ -37,15 +37,35 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
+// Root route
+app.get('/', (req, res) => {
+  res.json({
+    message: 'Budgify API',
+    version: '1.0.0',
+    endpoints: {
+      health: '/health',
+      auth: '/auth',
+      expenses: '/expenses',
+      recurring: '/recurring',
+      budget: '/budget'
+    }
+  });
+});
+
+// Health check
+app.get('/health', (req, res) => {
+  res.json({ status: 'ok', message: 'Budgify API is running' });
+});
+
 // Routes - no /api prefix needed since file is already at /api/index.ts
 app.use('/auth', authRoutes);
 app.use('/expenses', expensesRoutes);
 app.use('/recurring', recurringRoutes);
 app.use('/budget', budgetRoutes);
 
-// Health check
-app.get('/health', (req, res) => {
-  res.json({ status: 'ok', message: 'Budgify API is running' });
+// 404 handler
+app.use((req, res) => {
+  res.status(404).json({ error: 'Route not found', path: req.path });
 });
 
 // Export the Express app for Vercel
