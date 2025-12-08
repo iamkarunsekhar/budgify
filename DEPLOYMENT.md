@@ -1,247 +1,186 @@
-# Budgify Deployment Guide
+# Budgify Deployment Guide (DynamoDB + Vercel)
 
-This guide will help you deploy Budgify so you and your partner can access it from anywhere.
+This guide will help you deploy Budgify using **AWS DynamoDB** and **Vercel** - the simplest and most cost-effective deployment!
 
-## 🏗️ Deployment Architecture
-
-```
-┌─────────────────┐       ┌─────────────────┐       ┌─────────────┐
-│   Frontend      │       │    Backend      │       │  Database   │
-│   (Vercel)      │──────▶│ (Railway/Render)│──────▶│   SQLite    │
-│   Next.js App   │ HTTPS │  Express API    │       │ Persistent  │
-└─────────────────┘       └─────────────────┘       └─────────────┘
-```
-
-**Why this architecture?**
-- **Frontend on Vercel**: Perfect for Next.js, automatic deployments, free tier
-- **Backend on Railway/Render**: Persistent storage for SQLite database
-- **Vercel serverless functions DON'T work** because SQLite needs persistent file storage
-
-## 📋 Pre-Deployment Checklist
-
-### 1. Generate a Secure JWT Secret
-
-Run this command to generate a secure JWT secret:
-
-```bash
-node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
-```
-
-Copy the output - you'll need it for both platforms!
-
-### 2. Choose Your Backend Host
-
-We recommend:
-- **Railway** (recommended): Easy setup, good free tier, persistent storage
-- **Render**: Good alternative, free tier available
-- **Fly.io**: More control, good for production
-
-## 🚂 Option A: Deploy Backend to Railway
-
-### Step 1: Create Railway Account
-
-1. Go to [railway.app](https://railway.app)
-2. Sign up with GitHub
-3. Click "New Project" → "Deploy from GitHub repo"
-
-### Step 2: Configure Railway
-
-1. Select your `budgify` repository
-2. Railway will auto-detect the Node.js backend
-3. Add a `railway.json` file to specify the backend directory:
-
-```json
-{
-  "$schema": "https://railway.app/railway.schema.json",
-  "build": {
-    "builder": "NIXPACKS",
-    "buildCommand": "cd backend && npm install && npm run build"
-  },
-  "deploy": {
-    "startCommand": "cd backend && npm start",
-    "restartPolicyType": "ON_FAILURE",
-    "restartPolicyMaxRetries": 10
-  }
-}
-```
-
-### Step 3: Set Environment Variables in Railway
-
-Go to your Railway project → Variables → Add these:
+## 🎉 Why This Architecture is Perfect
 
 ```
-PORT=3000
-JWT_SECRET=<your-generated-secret-from-step-1>
-CORS_ORIGIN=https://your-app-name.vercel.app
+┌─────────────────┐       ┌──────────────────┐       ┌─────────────┐
+│   Frontend      │       │  Backend API     │       │  Database   │
+│   (Vercel)      │──────▶│  (Vercel)        │──────▶│  DynamoDB   │
+│   Next.js App   │ HTTPS │  Serverless      │       │  (AWS)      │
+└─────────────────┘       └──────────────────┘       └─────────────┘
 ```
 
-**Important:** You'll update `CORS_ORIGIN` after deploying the frontend!
+**Benefits:**
+- ✅ **Everything on Vercel** - No separate backend hosting needed!
+- ✅ **DynamoDB Free Tier** - 25GB storage, always free
+- ✅ **Auto-scaling** - Handles any traffic
+- ✅ **Global performance** - AWS + Vercel CDN
+- ✅ **$0/month** - Both services have generous free tiers
 
-### Step 4: Deploy & Get URL
+## 💰 Cost Breakdown
 
-1. Railway will automatically deploy
-2. Click "Settings" → "Generate Domain"
-3. Copy your Railway URL (e.g., `https://budgify-backend-production.up.railway.app`)
-4. **Save this URL** - you'll need it for the frontend!
+**AWS DynamoDB Free Tier (Forever):**
+- 25 GB storage
+- 25 WCU (write capacity units)
+- 25 RCU (read capacity units)
+- More than enough for personal/couple use!
 
-## 🚀 Option B: Deploy Backend to Render
+**Vercel Free Tier:**
+- Unlimited deployments
+- 100GB bandwidth/month
+- Serverless functions included
 
-### Step 1: Create Render Account
+**Total: $0/month** 🎉
 
-1. Go to [render.com](https://render.com)
-2. Sign up with GitHub
-3. Click "New" → "Web Service"
+## 📋 Prerequisites
 
-### Step 2: Configure Render
+1. **AWS Account** - You already have one!
+2. **GitHub Account** - For Vercel deployment
+3. **AWS Access Keys** - We'll create these
 
-1. Connect your GitHub repository
-2. Configure:
-   - **Name**: `budgify-backend`
+## 🚀 Step-by-Step Deployment
+
+### Step 1: Create AWS Access Keys (IAM)
+
+1. Go to [AWS IAM Console](https://console.aws.amazon.com/iam/)
+2. Click **Users** → **Create User**
+3. User name: `budgify-app`
+4. Click **Next**
+5. Select **Attach policies directly**
+6. Search for and select **AmazonDynamoDBFullAccess**
+7. Click **Next** → **Create User**
+8. Click on the user you just created
+9. Go to **Security credentials** tab
+10. Click **Create access key**
+11. Select **Application running outside AWS**
+12. Click **Next** → **Create access key**
+13. **IMPORTANT:** Copy both:
+    - Access key ID
+    - Secret access key
+14. Store them safely - you'll need them!
+
+### Step 2: Set Up DynamoDB Tables
+
+1. **Clone your repository** (if not already):
+   ```bash
+   git clone <your-repo-url>
+   cd budgify/backend
+   ```
+
+2. **Install dependencies**:
+   ```bash
+   npm install
+   ```
+
+3. **Create `.env` file**:
+   ```bash
+   cp .env.example .env
+   ```
+
+4. **Edit `.env` file** with your AWS credentials:
+   ```bash
+   # AWS Configuration
+   AWS_REGION=us-east-1
+   AWS_ACCESS_KEY_ID=your-access-key-id-here
+   AWS_SECRET_ACCESS_KEY=your-secret-access-key-here
+
+   # JWT Secret (generate this!)
+   JWT_SECRET=<run: node -e "console.log(require('crypto').randomBytes(64).toString('hex'))">
+   ```
+
+5. **Run the DynamoDB setup script**:
+   ```bash
+   npm run setup-dynamodb
+   ```
+
+   You should see:
+   ```
+   🚀 Setting up DynamoDB tables...
+   ✅ Created table budgify-users
+   ✅ Created table budgify-expenses
+   ✅ Created table budgify-recurring-costs
+   ✅ Created table budgify-budget-settings
+   ✅ All tables created successfully!
+   ```
+
+6. **Verify in AWS Console**:
+   - Go to [DynamoDB Console](https://console.aws.amazon.com/dynamodb/)
+   - You should see 4 tables created
+   - All tables should show "Active" status
+
+### Step 3: Deploy Backend to Vercel
+
+1. **Go to [vercel.com](https://vercel.com)**
+2. Sign up/login with GitHub
+3. Click **Add New** → **Project**
+4. Import your `budgify` repository
+5. Configure the project:
+   - **Framework Preset**: Other
    - **Root Directory**: `backend`
-   - **Environment**: `Node`
-   - **Build Command**: `npm install && npm run build`
-   - **Start Command**: `npm start`
+   - **Build Command**: `npm run build`
+   - **Output Directory**: `dist`
+   - **Install Command**: `npm install`
 
-### Step 3: Set Environment Variables in Render
+6. **Add Environment Variables** (click "Environment Variables"):
+   ```
+   JWT_SECRET=<your-generated-jwt-secret>
+   AWS_REGION=us-east-1
+   AWS_ACCESS_KEY_ID=<your-aws-access-key>
+   AWS_SECRET_ACCESS_KEY=<your-aws-secret-access-key>
+   DYNAMODB_USERS_TABLE=budgify-users
+   DYNAMODB_EXPENSES_TABLE=budgify-expenses
+   DYNAMODB_RECURRING_TABLE=budgify-recurring-costs
+   DYNAMODB_BUDGET_TABLE=budgify-budget-settings
+   NODE_ENV=production
+   ```
 
-Add these in the "Environment" section:
+7. Click **Deploy**
+8. Wait 2-3 minutes for deployment
+9. Copy your backend URL (e.g., `https://budgify-backend.vercel.app`)
 
-```
-PORT=3000
-JWT_SECRET=<your-generated-secret-from-checklist>
-CORS_ORIGIN=https://your-app-name.vercel.app
-```
+### Step 4: Deploy Frontend to Vercel
 
-### Step 4: Deploy & Get URL
-
-1. Click "Create Web Service"
-2. Wait for deployment (5-10 minutes)
-3. Copy your Render URL (e.g., `https://budgify-backend.onrender.com`)
-4. **Save this URL** - you'll need it for the frontend!
-
-## ☁️ Deploy Frontend to Vercel
-
-### Step 1: Create Vercel Account
-
-1. Go to [vercel.com](https://vercel.com)
-2. Sign up with GitHub
-3. Click "Add New" → "Project"
-
-### Step 2: Import Project
-
-1. Select your `budgify` repository
-2. Vercel will auto-detect Next.js
-3. Configure:
-   - **Framework Preset**: Next.js
+1. In Vercel dashboard, click **Add New** → **Project**
+2. Select your `budgify` repository again
+3. Configure the project:
+   - **Framework Preset**: Next.js (auto-detected)
    - **Root Directory**: `frontend`
    - **Build Command**: `npm run build` (auto-detected)
    - **Output Directory**: `.next` (auto-detected)
 
-### Step 3: Set Environment Variables
+4. **Add Environment Variable**:
+   ```
+   NEXT_PUBLIC_API_URL=https://your-backend-url.vercel.app/api
+   ```
+   ⚠️ Replace with your actual backend URL from Step 3!
 
-Add this in "Environment Variables":
-
-```
-NEXT_PUBLIC_API_URL=https://your-backend-url.railway.app/api
-```
-
-Replace `your-backend-url.railway.app` with your actual Railway/Render URL from above!
-
-### Step 4: Deploy
-
-1. Click "Deploy"
-2. Wait 2-3 minutes
-3. Get your Vercel URL (e.g., `https://budgify.vercel.app`)
+5. Click **Deploy**
+6. Wait 2-3 minutes
+7. Copy your frontend URL (e.g., `https://budgify.vercel.app`)
 
 ### Step 5: Update Backend CORS
 
-**IMPORTANT:** Go back to Railway/Render and update `CORS_ORIGIN`:
+**IMPORTANT:** Go back to your backend project in Vercel:
 
-```
-CORS_ORIGIN=https://budgify.vercel.app
-```
+1. Click on your backend project
+2. Go to **Settings** → **Environment Variables**
+3. Add new variable:
+   ```
+   CORS_ORIGIN=https://your-frontend-url.vercel.app
+   ```
+   ⚠️ Replace with your actual frontend URL from Step 4!
 
-Replace with your actual Vercel URL! Redeploy the backend after this change.
+4. Go to **Deployments** tab
+5. Click the three dots on the latest deployment → **Redeploy**
+6. Select **Use existing Build Cache** → **Redeploy**
 
-## 🎉 First Time Setup
+## ✅ Testing Your Deployment
 
-### Partner 1:
-1. Visit your Vercel URL (e.g., `https://budgify.vercel.app`)
-2. Click "Sign Up"
-3. Create account with your email
-4. Set your budget limit
-5. Start tracking!
+### 1. Test Backend Health
 
-### Partner 2:
-1. Visit the same Vercel URL
-2. Click "Sign Up"
-3. Create account with a **different email**
-4. Set your own budget limit
-5. Track independently!
-
-## 🔒 Security Best Practices
-
-### Change Default JWT Secret
-
-**CRITICAL:** Never use the default JWT secret in production!
-
-1. Generate a new secret (see Pre-Deployment Checklist)
-2. Update in Railway/Render environment variables
-3. Redeploy backend
-
-### Verify CORS Configuration
-
-Make sure `CORS_ORIGIN` matches your Vercel URL exactly:
-- ✅ `https://budgify.vercel.app`
-- ❌ `https://budgify.vercel.app/` (no trailing slash)
-- ❌ `http://budgify.vercel.app` (use https)
-
-## 🐛 Troubleshooting
-
-### "Network Error" or CORS Issues
-
-**Problem:** Frontend can't connect to backend
-
-**Solutions:**
-1. Check `NEXT_PUBLIC_API_URL` in Vercel environment variables
-2. Verify `CORS_ORIGIN` in Railway/Render matches your Vercel URL
-3. Make sure backend is running (check Railway/Render logs)
-4. Try accessing `https://your-backend-url/api/health` directly
-
-### "Invalid Token" Errors
-
-**Problem:** JWT tokens not working
-
-**Solutions:**
-1. Make sure `JWT_SECRET` is the same on backend
-2. Clear browser local storage and re-login
-3. Check backend logs for authentication errors
-
-### Database Issues
-
-**Problem:** Data not persisting or getting lost
-
-**Solutions:**
-1. **Verify persistent storage** on Railway/Render
-2. Check backend logs for database errors
-3. Make sure `backend/data` directory is being created
-
-### Backend Won't Deploy
-
-**Problem:** Railway/Render deployment fails
-
-**Solutions:**
-1. Check build logs for errors
-2. Verify `package.json` has correct scripts:
-   - `"build": "tsc"`
-   - `"start": "node dist/index.js"`
-3. Make sure `tsconfig.json` is in backend directory
-
-## 📊 Monitoring
-
-### Check Backend Health
-
-Visit: `https://your-backend-url/api/health`
+Visit: `https://your-backend-url.vercel.app/api/health`
 
 Should return:
 ```json
@@ -251,68 +190,218 @@ Should return:
 }
 ```
 
-### View Logs
+### 2. Test Frontend
 
-- **Railway**: Dashboard → Deployments → View Logs
-- **Render**: Dashboard → Logs tab
-- **Vercel**: Dashboard → Deployments → View Function Logs
+1. Visit your frontend URL: `https://your-frontend-url.vercel.app`
+2. Click **Sign Up**
+3. Create an account
+4. Set your budget limit
+5. Add an expense
+6. Verify everything works!
 
-## 💰 Cost Estimate
+### 3. Test Partner Access
 
-### Free Tier (Recommended for Personal Use)
+1. Open frontend in incognito/private window
+2. Sign up with a different email
+3. Verify data is completely separate
 
-- **Vercel**: Free tier includes:
-  - Unlimited deployments
-  - 100GB bandwidth/month
-  - Automatic HTTPS
+## 🔒 Security Best Practices
 
-- **Railway**: Free tier includes:
-  - $5 credit/month
-  - Enough for 24/7 backend hosting
-  - 1GB persistent storage
+### 1. JWT Secret
 
-- **Render**: Free tier includes:
-  - 750 hours/month
-  - Sleeps after 15min inactivity
-  - 500MB storage
+**Generate a strong JWT secret:**
+```bash
+node -e "console.log(require('crypto').randomBytes(64).toString('hex'))"
+```
 
-**Total: FREE** for both partners!
+Use this value for `JWT_SECRET` in Vercel environment variables.
 
-### If You Outgrow Free Tier
+### 2. AWS Access Keys
 
-- Railway: $5-10/month for upgraded plan
-- Render: $7/month for always-on service
-- Vercel: Free tier is usually enough
+**Best practice - Use IAM role with minimal permissions:**
 
-## 🔄 Future Updates
+Create a custom policy with only these permissions:
+```json
+{
+  "Version": "2012-10-17",
+  "Statement": [
+    {
+      "Effect": "Allow",
+      "Action": [
+        "dynamodb:PutItem",
+        "dynamodb:GetItem",
+        "dynamodb:UpdateItem",
+        "dynamodb:DeleteItem",
+        "dynamodb:Query",
+        "dynamodb:Scan"
+      ],
+      "Resource": [
+        "arn:aws:dynamodb:us-east-1:*:table/budgify-*"
+      ]
+    }
+  ]
+}
+```
 
-### Deploy New Changes
+### 3. Environment Variables
 
-**Frontend (Vercel):**
-- Push to GitHub → Automatic deployment
+**Never commit these to Git:**
+- ✅ Use Vercel environment variables
+- ✅ Store secrets in `.env` (gitignored)
+- ❌ Never push AWS keys to GitHub
 
-**Backend (Railway/Render):**
-- Push to GitHub → Automatic deployment
-- Or manually trigger redeploy in dashboard
+## 🛠️ Local Development
 
-### Database Migrations
+### Backend
 
-If you need to change the database schema:
-1. Update `backend/src/db/database.ts`
-2. Deploy backend
-3. Railway/Render will automatically run migrations on restart
+```bash
+cd backend
+npm install
+cp .env.example .env
+# Edit .env with your AWS credentials
+npm run dev
+```
+
+Runs on `http://localhost:3000`
+
+### Frontend
+
+```bash
+cd frontend
+npm install
+# Edit .env.local with: NEXT_PUBLIC_API_URL=http://localhost:3000/api
+npm run dev
+```
+
+Runs on `http://localhost:3001`
+
+## 🔄 Updating Your Deployment
+
+**Any changes to your code:**
+
+1. Commit and push to GitHub:
+   ```bash
+   git add .
+   git commit -m "Your changes"
+   git push
+   ```
+
+2. Vercel automatically detects changes and redeploys!
+   - Check deployment status in Vercel dashboard
+   - Both frontend and backend redeploy automatically
+
+## 🐛 Troubleshooting
+
+### "Network Error" or Can't Connect
+
+**Problem:** Frontend can't reach backend
+
+**Solutions:**
+1. Verify `NEXT_PUBLIC_API_URL` in frontend Vercel settings
+2. Check `CORS_ORIGIN` in backend Vercel settings
+3. Ensure URLs don't have trailing slashes
+4. Test backend health endpoint directly
+
+### "Invalid Token" or Authentication Errors
+
+**Problem:** JWT authentication failing
+
+**Solutions:**
+1. Verify `JWT_SECRET` is the same in backend
+2. Clear browser localStorage and re-login
+3. Check browser console for errors
+
+### DynamoDB Errors
+
+**Problem:** Can't read/write to DynamoDB
+
+**Solutions:**
+1. Verify AWS credentials in Vercel are correct
+2. Check IAM user has DynamoDB permissions
+3. Verify table names match in environment variables
+4. Check DynamoDB console - tables should be "Active"
+
+### Deployment Fails
+
+**Problem:** Vercel deployment failing
+
+**Backend deployment fails:**
+- Check build logs in Vercel
+- Verify `package.json` has correct build script
+- Ensure all dependencies are listed
+- Check TypeScript compiles: `npm run build`
+
+**Frontend deployment fails:**
+- Verify Next.js builds locally: `npm run build`
+- Check for TypeScript errors
+- Ensure environment variables are set
+
+## 📊 Monitoring
+
+### Vercel Analytics
+
+1. Go to your project in Vercel
+2. Click **Analytics** tab
+3. View:
+   - Page views
+   - API calls
+   - Performance metrics
+   - Error rates
+
+### AWS DynamoDB Metrics
+
+1. Go to [DynamoDB Console](https://console.aws.amazon.com/dynamodb/)
+2. Select a table
+3. Click **Metrics** tab
+4. Monitor:
+   - Read/write capacity usage
+   - Storage usage
+   - Request latency
+
+### Check Costs
+
+1. [AWS Billing Dashboard](https://console.aws.amazon.com/billing/)
+2. Should see **$0.00** if within free tier
+3. Set up billing alerts if desired
+
+## 🚀 Performance Optimization
+
+### DynamoDB
+
+**If you exceed free tier:**
+- Tables use provisioned capacity (5 RCU/WCU)
+- Can switch to on-demand pricing
+- Or optimize queries to use less capacity
+
+**Optimization tips:**
+- Expenses are partitioned by user_id (efficient!)
+- Queries use partition key (fast!)
+- No table scans (good for costs!)
+
+### Vercel
+
+**Automatic optimizations:**
+- Edge caching
+- Compression
+- Image optimization (Next.js)
+- Serverless function caching
+
+## 📚 Additional Resources
+
+- [DynamoDB Best Practices](https://docs.aws.amazon.com/amazondynamodb/latest/developerguide/best-practices.html)
+- [Vercel Documentation](https://vercel.com/docs)
+- [Next.js Deployment](https://nextjs.org/docs/deployment)
 
 ## 🆘 Need Help?
 
 Common issues:
-1. Frontend deployed but shows errors → Check Vercel function logs
-2. Can't connect to backend → Verify CORS_ORIGIN and API URL
-3. Data not saving → Check Railway/Render has persistent storage enabled
-4. Authentication issues → Verify JWT_SECRET is set correctly
+1. **Can't create tables** → Check AWS IAM permissions
+2. **Backend 500 errors** → Check Vercel function logs
+3. **CORS errors** → Verify CORS_ORIGIN matches frontend URL
+4. **Auth not working** → Verify JWT_SECRET is set
 
-## 📚 Additional Resources
+---
 
-- [Next.js Deployment Docs](https://nextjs.org/docs/deployment)
-- [Railway Documentation](https://docs.railway.app)
-- [Render Documentation](https://render.com/docs)
-- [Vercel Documentation](https://vercel.com/docs)
+**Congratulations!** 🎉 Your budget tracker is now live and accessible from anywhere!
+
+Both you and your partner can access it 24/7, with completely separate and private budgets.

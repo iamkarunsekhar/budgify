@@ -1,16 +1,24 @@
 import express, { Response } from 'express';
-import db from '../db/database';
+import { docClient, TABLES, PutCommand, GetCommand, QueryCommand, UpdateCommand, DeleteCommand, generateId, getCurrentTimestamp } from '../db/dynamodb';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
 import { RecurringCost } from '../types';
 
 const router = express.Router();
 
 // Get all recurring costs for user
-router.get('/', authenticateToken, (req: AuthRequest, res: Response) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const recurringCosts = db.prepare(
-      'SELECT * FROM recurring_costs WHERE user_id = ? ORDER BY created_at DESC'
-    ).all(req.userId) as RecurringCost[];
+    const result = await docClient.send(new QueryCommand({
+      TableName: TABLES.RECURRING_COSTS,
+      KeyConditionExpression: 'user_id = :userId',
+      ExpressionAttributeValues: {
+        ':userId': req.userId,
+      },
+    }));
+
+    const recurringCosts = (result.Items || []) as RecurringCost[];
+    // Sort by created_at descending
+    recurringCosts.sort((a, b) => new Date(b.created_at).getTime() - new Date(a.created_at).getTime());
 
     res.json(recurringCosts);
   } catch (error) {
@@ -20,7 +28,7 @@ router.get('/', authenticateToken, (req: AuthRequest, res: Response) => {
 });
 
 // Create recurring cost
-router.post('/', authenticateToken, (req: AuthRequest, res: Response) => {
+router.post('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { name, amount, frequency, category, start_date } = req.body;
 
@@ -32,11 +40,24 @@ router.post('/', authenticateToken, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Frequency must be monthly or annual' });
     }
 
-    const result = db.prepare(
-      'INSERT INTO recurring_costs (user_id, name, amount, frequency, category, start_date) VALUES (?, ?, ?, ?, ?, ?)'
-    ).run(req.userId, name, amount, frequency, category, start_date);
+    const recurringId = generateId();
+    const timestamp = getCurrentTimestamp();
 
-    const recurringCost = db.prepare('SELECT * FROM recurring_costs WHERE id = ?').get(result.lastInsertRowid) as RecurringCost;
+    const recurringCost: RecurringCost = {
+      id: recurringId,
+      user_id: req.userId!,
+      name,
+      amount,
+      frequency,
+      category,
+      start_date,
+      created_at: timestamp,
+    };
+
+    await docClient.send(new PutCommand({
+      TableName: TABLES.RECURRING_COSTS,
+      Item: recurringCost,
+    }));
 
     res.status(201).json(recurringCost);
   } catch (error) {
@@ -46,29 +67,49 @@ router.post('/', authenticateToken, (req: AuthRequest, res: Response) => {
 });
 
 // Update recurring cost
-router.put('/:id', authenticateToken, (req: AuthRequest, res: Response) => {
+router.put('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
     const { name, amount, frequency, category, start_date } = req.body;
-
-    // Verify recurring cost belongs to user
-    const recurringCost = db.prepare('SELECT * FROM recurring_costs WHERE id = ? AND user_id = ?').get(id, req.userId) as RecurringCost | undefined;
-
-    if (!recurringCost) {
-      return res.status(404).json({ error: 'Recurring cost not found' });
-    }
 
     if (frequency && frequency !== 'monthly' && frequency !== 'annual') {
       return res.status(400).json({ error: 'Frequency must be monthly or annual' });
     }
 
-    db.prepare(
-      'UPDATE recurring_costs SET name = ?, amount = ?, frequency = ?, category = ?, start_date = ? WHERE id = ?'
-    ).run(name, amount, frequency, category, start_date, id);
+    // Verify recurring cost belongs to user
+    const result = await docClient.send(new GetCommand({
+      TableName: TABLES.RECURRING_COSTS,
+      Key: {
+        user_id: req.userId,
+        id: parseInt(id),
+      },
+    }));
 
-    const updatedRecurringCost = db.prepare('SELECT * FROM recurring_costs WHERE id = ?').get(id) as RecurringCost;
+    if (!result.Item) {
+      return res.status(404).json({ error: 'Recurring cost not found' });
+    }
 
-    res.json(updatedRecurringCost);
+    const updatedRecurringCost = await docClient.send(new UpdateCommand({
+      TableName: TABLES.RECURRING_COSTS,
+      Key: {
+        user_id: req.userId,
+        id: parseInt(id),
+      },
+      UpdateExpression: 'SET #name = :name, amount = :amount, frequency = :frequency, category = :category, start_date = :start_date',
+      ExpressionAttributeNames: {
+        '#name': 'name', // 'name' is a reserved keyword in DynamoDB
+      },
+      ExpressionAttributeValues: {
+        ':name': name,
+        ':amount': amount,
+        ':frequency': frequency,
+        ':category': category,
+        ':start_date': start_date,
+      },
+      ReturnValues: 'ALL_NEW',
+    }));
+
+    res.json(updatedRecurringCost.Attributes);
   } catch (error) {
     console.error('Update recurring cost error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -76,18 +117,30 @@ router.put('/:id', authenticateToken, (req: AuthRequest, res: Response) => {
 });
 
 // Delete recurring cost
-router.delete('/:id', authenticateToken, (req: AuthRequest, res: Response) => {
+router.delete('/:id', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { id } = req.params;
 
     // Verify recurring cost belongs to user
-    const recurringCost = db.prepare('SELECT * FROM recurring_costs WHERE id = ? AND user_id = ?').get(id, req.userId) as RecurringCost | undefined;
+    const result = await docClient.send(new GetCommand({
+      TableName: TABLES.RECURRING_COSTS,
+      Key: {
+        user_id: req.userId,
+        id: parseInt(id),
+      },
+    }));
 
-    if (!recurringCost) {
+    if (!result.Item) {
       return res.status(404).json({ error: 'Recurring cost not found' });
     }
 
-    db.prepare('DELETE FROM recurring_costs WHERE id = ?').run(id);
+    await docClient.send(new DeleteCommand({
+      TableName: TABLES.RECURRING_COSTS,
+      Key: {
+        user_id: req.userId,
+        id: parseInt(id),
+      },
+    }));
 
     res.json({ message: 'Recurring cost deleted successfully' });
   } catch (error) {

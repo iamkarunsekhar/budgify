@@ -1,22 +1,25 @@
 import express, { Response } from 'express';
-import db from '../db/database';
+import { docClient, TABLES, GetCommand, UpdateCommand, QueryCommand, getCurrentTimestamp } from '../db/dynamodb';
 import { authenticateToken, AuthRequest } from '../middleware/auth';
-import { BudgetSetting } from '../types';
+import { BudgetSetting, Expense, RecurringCost } from '../types';
 
 const router = express.Router();
 
 // Get budget settings
-router.get('/', authenticateToken, (req: AuthRequest, res: Response) => {
+router.get('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
-    const budgetSetting = db.prepare(
-      'SELECT * FROM budget_settings WHERE user_id = ?'
-    ).get(req.userId) as BudgetSetting | undefined;
+    const result = await docClient.send(new GetCommand({
+      TableName: TABLES.BUDGET_SETTINGS,
+      Key: {
+        user_id: req.userId,
+      },
+    }));
 
-    if (!budgetSetting) {
+    if (!result.Item) {
       return res.status(404).json({ error: 'Budget settings not found' });
     }
 
-    res.json(budgetSetting);
+    res.json(result.Item);
   } catch (error) {
     console.error('Get budget settings error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -24,7 +27,7 @@ router.get('/', authenticateToken, (req: AuthRequest, res: Response) => {
 });
 
 // Update budget settings
-router.put('/', authenticateToken, (req: AuthRequest, res: Response) => {
+router.put('/', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { monthly_limit } = req.body;
 
@@ -32,13 +35,20 @@ router.put('/', authenticateToken, (req: AuthRequest, res: Response) => {
       return res.status(400).json({ error: 'Monthly limit is required' });
     }
 
-    db.prepare(
-      'UPDATE budget_settings SET monthly_limit = ?, updated_at = CURRENT_TIMESTAMP WHERE user_id = ?'
-    ).run(monthly_limit, req.userId);
+    const result = await docClient.send(new UpdateCommand({
+      TableName: TABLES.BUDGET_SETTINGS,
+      Key: {
+        user_id: req.userId,
+      },
+      UpdateExpression: 'SET monthly_limit = :limit, updated_at = :timestamp',
+      ExpressionAttributeValues: {
+        ':limit': monthly_limit,
+        ':timestamp': getCurrentTimestamp(),
+      },
+      ReturnValues: 'ALL_NEW',
+    }));
 
-    const budgetSetting = db.prepare('SELECT * FROM budget_settings WHERE user_id = ?').get(req.userId) as BudgetSetting;
-
-    res.json(budgetSetting);
+    res.json(result.Attributes);
   } catch (error) {
     console.error('Update budget settings error:', error);
     res.status(500).json({ error: 'Internal server error' });
@@ -46,55 +56,87 @@ router.put('/', authenticateToken, (req: AuthRequest, res: Response) => {
 });
 
 // Get spending summary for a month
-router.get('/summary/:year/:month', authenticateToken, (req: AuthRequest, res: Response) => {
+router.get('/summary/:year/:month', authenticateToken, async (req: AuthRequest, res: Response) => {
   try {
     const { year, month } = req.params;
+    const paddedMonth = month.padStart(2, '0');
+    const monthStart = `${year}-${paddedMonth}-01`;
 
-    // Get total expenses for the month
-    const result = db.prepare(`
-      SELECT
-        COALESCE(SUM(amount), 0) as total_spent,
-        COUNT(*) as transaction_count
-      FROM expenses
-      WHERE user_id = ?
-      AND strftime('%Y', date) = ?
-      AND strftime('%m', date) = ?
-    `).get(req.userId, year, month.padStart(2, '0')) as { total_spent: number; transaction_count: number };
+    // Get all expenses for the user
+    const expensesResult = await docClient.send(new QueryCommand({
+      TableName: TABLES.EXPENSES,
+      KeyConditionExpression: 'user_id = :userId',
+      ExpressionAttributeValues: {
+        ':userId': req.userId,
+      },
+    }));
 
-    // Get recurring costs for the month
-    const recurringMonthly = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total
-      FROM recurring_costs
-      WHERE user_id = ?
-      AND frequency = 'monthly'
-      AND date(start_date) <= date(?)
-    `).get(req.userId, `${year}-${month.padStart(2, '0')}-01`) as { total: number };
+    const expenses = (expensesResult.Items || []) as Expense[];
 
-    const recurringAnnual = db.prepare(`
-      SELECT COALESCE(SUM(amount), 0) as total
-      FROM recurring_costs
-      WHERE user_id = ?
-      AND frequency = 'annual'
-      AND date(start_date) <= date(?)
-    `).get(req.userId, `${year}-${month.padStart(2, '0')}-01`) as { total: number };
+    // Filter expenses for the specific month and calculate total
+    const monthExpenses = expenses.filter(expense => {
+      const expenseDate = new Date(expense.date);
+      return expenseDate.getFullYear() === parseInt(year) &&
+             expenseDate.getMonth() === parseInt(month) - 1;
+    });
 
-    // Get budget limit
-    const budgetSetting = db.prepare('SELECT * FROM budget_settings WHERE user_id = ?').get(req.userId) as BudgetSetting;
+    const totalSpent = monthExpenses.reduce((sum, exp) => sum + exp.amount, 0);
+    const transactionCount = monthExpenses.length;
 
-    const totalRecurring = recurringMonthly.total + (recurringAnnual.total / 12);
-    const totalSpent = result.total_spent + totalRecurring;
-    const remaining = budgetSetting.monthly_limit - totalSpent;
-    const percentageUsed = budgetSetting.monthly_limit > 0 ? (totalSpent / budgetSetting.monthly_limit) * 100 : 0;
+    // Get recurring costs
+    const recurringResult = await docClient.send(new QueryCommand({
+      TableName: TABLES.RECURRING_COSTS,
+      KeyConditionExpression: 'user_id = :userId',
+      ExpressionAttributeValues: {
+        ':userId': req.userId,
+      },
+    }));
+
+    const recurringCosts = (recurringResult.Items || []) as RecurringCost[];
+
+    // Filter recurring costs that started before or during this month
+    const activeRecurringCosts = recurringCosts.filter(cost => {
+      const startDate = new Date(cost.start_date);
+      const targetDate = new Date(monthStart);
+      return startDate <= targetDate;
+    });
+
+    // Calculate recurring costs totals
+    const recurringMonthly = activeRecurringCosts
+      .filter(cost => cost.frequency === 'monthly')
+      .reduce((sum, cost) => sum + cost.amount, 0);
+
+    const recurringAnnual = activeRecurringCosts
+      .filter(cost => cost.frequency === 'annual')
+      .reduce((sum, cost) => sum + cost.amount, 0);
+
+    // Get budget settings
+    const budgetResult = await docClient.send(new GetCommand({
+      TableName: TABLES.BUDGET_SETTINGS,
+      Key: {
+        user_id: req.userId,
+      },
+    }));
+
+    const budgetSetting = budgetResult.Item as BudgetSetting;
+
+    // Calculate summary
+    const totalRecurring = recurringMonthly + (recurringAnnual / 12);
+    const totalWithRecurring = totalSpent + totalRecurring;
+    const remaining = budgetSetting.monthly_limit - totalWithRecurring;
+    const percentageUsed = budgetSetting.monthly_limit > 0
+      ? (totalWithRecurring / budgetSetting.monthly_limit) * 100
+      : 0;
 
     res.json({
-      total_spent: result.total_spent,
+      total_spent: totalSpent,
       recurring_costs: totalRecurring,
-      total_with_recurring: totalSpent,
+      total_with_recurring: totalWithRecurring,
       budget_limit: budgetSetting.monthly_limit,
       remaining,
       percentage_used: percentageUsed,
-      transaction_count: result.transaction_count,
-      is_over_budget: totalSpent > budgetSetting.monthly_limit
+      transaction_count: transactionCount,
+      is_over_budget: totalWithRecurring > budgetSetting.monthly_limit
     });
   } catch (error) {
     console.error('Get spending summary error:', error);

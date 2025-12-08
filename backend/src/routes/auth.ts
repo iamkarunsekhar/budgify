@@ -1,6 +1,6 @@
 import express, { Request, Response } from 'express';
 import bcrypt from 'bcryptjs';
-import db from '../db/database';
+import { docClient, TABLES, PutCommand, QueryCommand, generateId, getCurrentTimestamp } from '../db/dynamodb';
 import { generateToken } from '../middleware/auth';
 import { User } from '../types';
 
@@ -15,27 +15,64 @@ router.post('/register', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'All fields are required' });
     }
 
-    // Check if user already exists
-    const existingUser = db.prepare('SELECT * FROM users WHERE email = ? OR username = ?').get(email, username) as User | undefined;
+    // Check if user already exists by email
+    const existingUserByEmail = await docClient.send(new QueryCommand({
+      TableName: TABLES.USERS,
+      IndexName: 'email-index',
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+      Limit: 1,
+    }));
 
-    if (existingUser) {
+    if (existingUserByEmail.Items && existingUserByEmail.Items.length > 0) {
+      return res.status(400).json({ error: 'User already exists' });
+    }
+
+    // Check if username already exists
+    const existingUserByUsername = await docClient.send(new QueryCommand({
+      TableName: TABLES.USERS,
+      IndexName: 'username-index',
+      KeyConditionExpression: 'username = :username',
+      ExpressionAttributeValues: {
+        ':username': username,
+      },
+      Limit: 1,
+    }));
+
+    if (existingUserByUsername.Items && existingUserByUsername.Items.length > 0) {
       return res.status(400).json({ error: 'User already exists' });
     }
 
     // Hash password
     const hashedPassword = await bcrypt.hash(password, 10);
 
-    // Create user
-    const result = db.prepare(
-      'INSERT INTO users (username, email, password) VALUES (?, ?, ?)'
-    ).run(username, email, hashedPassword);
+    // Generate user ID
+    const userId = generateId();
+    const timestamp = getCurrentTimestamp();
 
-    const userId = result.lastInsertRowid as number;
+    // Create user
+    await docClient.send(new PutCommand({
+      TableName: TABLES.USERS,
+      Item: {
+        id: userId,
+        username,
+        email,
+        password: hashedPassword,
+        created_at: timestamp,
+      },
+    }));
 
     // Create default budget setting
-    db.prepare(
-      'INSERT INTO budget_settings (user_id, monthly_limit) VALUES (?, ?)'
-    ).run(userId, 0);
+    await docClient.send(new PutCommand({
+      TableName: TABLES.BUDGET_SETTINGS,
+      Item: {
+        user_id: userId,
+        monthly_limit: 0,
+        updated_at: timestamp,
+      },
+    }));
 
     const token = generateToken(userId);
 
@@ -59,11 +96,22 @@ router.post('/login', async (req: Request, res: Response) => {
       return res.status(400).json({ error: 'Email and password are required' });
     }
 
-    const user = db.prepare('SELECT * FROM users WHERE email = ?').get(email) as User | undefined;
+    // Find user by email
+    const result = await docClient.send(new QueryCommand({
+      TableName: TABLES.USERS,
+      IndexName: 'email-index',
+      KeyConditionExpression: 'email = :email',
+      ExpressionAttributeValues: {
+        ':email': email,
+      },
+      Limit: 1,
+    }));
 
-    if (!user) {
+    if (!result.Items || result.Items.length === 0) {
       return res.status(401).json({ error: 'Invalid credentials' });
     }
+
+    const user = result.Items[0] as User;
 
     const isValidPassword = await bcrypt.compare(password, user.password);
 

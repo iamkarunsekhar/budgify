@@ -1,9 +1,6 @@
 import express from 'express';
 import cors from 'cors';
 import dotenv from 'dotenv';
-import path from 'path';
-import fs from 'fs';
-import { initializeDatabase } from './db/database';
 
 // Import routes
 import authRoutes from './routes/auth';
@@ -27,15 +24,6 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Ensure data directory exists
-const dataDir = path.join(__dirname, '../data');
-if (!fs.existsSync(dataDir)) {
-  fs.mkdirSync(dataDir, { recursive: true });
-}
-
-// Initialize database
-initializeDatabase();
-
 // Routes
 app.use('/api/auth', authRoutes);
 app.use('/api/expenses', expensesRoutes);
@@ -47,6 +35,12 @@ app.get('/api/health', (req, res) => {
   res.json({ status: 'ok', message: 'Budgify API is running' });
 });
 
-app.listen(PORT, () => {
-  console.log(`🚀 Server running on http://localhost:${PORT}`);
-});
+// Only start server if not in serverless environment
+if (process.env.NODE_ENV !== 'production' || !process.env.VERCEL) {
+  app.listen(PORT, () => {
+    console.log(`🚀 Server running on http://localhost:${PORT}`);
+  });
+}
+
+// Export for serverless
+export default app;
