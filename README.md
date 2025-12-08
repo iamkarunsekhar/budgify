@@ -1,29 +1,45 @@
 # Budgify
 
-A modern, fluid web application for tracking monthly spending and managing budgets. Built for couples and individuals who want to monitor their expenses, visualize spending patterns, and stay within their budget goals.
+A modern, fluid web application for tracking monthly spending and managing budgets. Built for couples and individuals who want to independently monitor their expenses, visualize spending patterns, and stay within their budget goals.
 
 ## Features
 
-- **Multi-user Support**: Perfect for couples or roommates to track shared expenses
+- **Independent User Tracking**: Each user tracks their own budget completely separately - perfect for couples who want to maintain financial independence while living together
+- **Secure Authentication**: JWT-based authentication ensures your data is private and secure
 - **Expense Tracking**: Add, view, and delete expenses with categories
-- **Recurring Costs**: Manage monthly and annual recurring expenses (subscriptions, rent, etc.)
-- **Budget Management**: Set monthly spending limits and track progress
+- **Recurring Costs**: Manage monthly and annual recurring expenses (subscriptions, rent, insurance, etc.)
+- **Budget Management**: Set monthly spending limits and track progress independently
 - **Visual Analytics**:
   - Daily spending line chart
   - Category breakdown pie chart
-  - Month-over-month comparison
+  - Month-over-month navigation and comparison
 - **Budget Warnings**: Visual alerts when approaching or exceeding budget limits
-- **Month Navigation**: Easily browse through different months
-- **Modern UI**: Clean, responsive design built with Tailwind CSS
+  - Green: On track (< 80% of budget used)
+  - Yellow: Warning (80-100% of budget used)
+  - Red: Over budget
+- **Modern UI**: Clean, responsive design built with Next.js and Tailwind CSS
+
+## How Independent Tracking Works
+
+Each user creates their own account with a unique email and password. When you log in:
+- You only see YOUR expenses, recurring costs, and budget settings
+- Your partner's financial data is completely separate and private
+- Each person can set their own budget limits
+- All data is filtered by user ID at the database level for security
+
+This makes Budgify perfect for couples who want to:
+- Maintain financial independence
+- Track personal spending without combining accounts
+- Keep their budgets private while living together
+- Each manage their own subscriptions and recurring costs
 
 ## Tech Stack
 
 ### Frontend
-- **React** with TypeScript
-- **Vite** for fast development
+- **Next.js 15** with App Router
+- **TypeScript** for type safety
 - **Tailwind CSS** for styling
 - **Recharts** for data visualization
-- **React Router** for navigation
 - **date-fns** for date manipulation
 
 ### Backend
@@ -55,7 +71,7 @@ A modern, fluid web application for tracking monthly spending and managing budge
 
    # Create .env file
    cp .env.example .env
-   # Edit .env and set your JWT_SECRET
+   # Edit .env and set your JWT_SECRET to a strong random string
 
    # Start the backend server
    npm run dev
@@ -68,22 +84,31 @@ A modern, fluid web application for tracking monthly spending and managing budge
    cd frontend
    npm install
 
-   # Create .env file
-   cp .env.example .env
+   # Create .env.local file
+   cp .env.example .env.local
    # The default API URL should work if backend is on port 3000
 
    # Start the frontend dev server
    npm run dev
    ```
 
-   The frontend will run on `http://localhost:5173`
+   The frontend will run on `http://localhost:3001`
 
-### First Time Setup
+### First Time Setup (For Couples)
 
-1. Navigate to `http://localhost:5173`
+#### Partner 1:
+1. Navigate to `http://localhost:3001`
 2. Click "Sign Up" to create your account
 3. Set your monthly budget limit in "Budget Settings"
-4. Start adding expenses!
+4. Start adding your expenses and recurring costs!
+
+#### Partner 2:
+1. Navigate to `http://localhost:3001`
+2. Click "Sign Up" to create a separate account (use a different email)
+3. Set your own monthly budget limit in "Budget Settings"
+4. Start tracking your own expenses independently!
+
+Each of you will have completely separate budgets and data.
 
 ## Usage
 
@@ -92,25 +117,35 @@ A modern, fluid web application for tracking monthly spending and managing budge
 1. Click "+ Add Expense" from the dashboard
 2. Enter the amount, select a category, choose a date, and optionally add a description
 3. Click "Add Expense" to save
+4. Only you can see this expense - it's private to your account
 
 ### Managing Recurring Costs
 
 1. Go to the "Recurring Costs" tab
 2. Click "+ Add Recurring Cost"
 3. Enter the name (e.g., "Netflix"), amount, frequency (monthly/annual), category, and start date
-4. Recurring costs are automatically factored into your monthly budget
+4. Recurring costs are automatically factored into your monthly budget calculations
+5. Annual costs are prorated (divided by 12) for monthly impact
 
 ### Setting Budget Limits
 
 1. Click "Budget Settings" in the header
 2. Enter your desired monthly spending limit
-3. The dashboard will show progress and warnings based on this limit
+3. The dashboard will show your progress and warnings based on this limit
+4. This is YOUR budget limit - your partner's limit is set separately in their account
 
 ### Understanding Budget Status
 
 - **Green** (On Track): Less than 80% of budget used
 - **Yellow** (Warning): 80-100% of budget used
 - **Red** (Over Budget): Exceeded budget limit
+
+### Viewing Month-by-Month Trends
+
+Use the month navigation buttons to:
+- View previous months' spending patterns
+- Compare spending across different months
+- See how your habits change over time
 
 ## Project Structure
 
@@ -124,9 +159,9 @@ budgify/
 │   │   │   └── auth.ts           # JWT authentication
 │   │   ├── routes/
 │   │   │   ├── auth.ts           # Login/register endpoints
-│   │   │   ├── expenses.ts       # Expense CRUD
-│   │   │   ├── recurring.ts      # Recurring costs CRUD
-│   │   │   └── budget.ts         # Budget settings & summaries
+│   │   │   ├── expenses.ts       # Expense CRUD (user-filtered)
+│   │   │   ├── recurring.ts      # Recurring costs CRUD (user-filtered)
+│   │   │   └── budget.ts         # Budget settings & summaries (user-filtered)
 │   │   ├── types/
 │   │   │   └── index.ts          # TypeScript types
 │   │   └── index.ts              # Server entry point
@@ -134,55 +169,61 @@ budgify/
 │   └── package.json
 │
 └── frontend/
-    ├── src/
-    │   ├── components/
-    │   │   ├── AddExpenseModal.tsx
-    │   │   ├── AddRecurringModal.tsx
-    │   │   ├── BudgetSettings.tsx
+    ├── app/
+    │   ├── dashboard/
+    │   │   └── page.tsx          # Main dashboard page
+    │   ├── login/
+    │   │   └── page.tsx          # Login page
+    │   ├── register/
+    │   │   └── page.tsx          # Registration page
+    │   ├── layout.tsx            # Root layout with AuthProvider
+    │   └── page.tsx              # Home page (redirects)
+    ├── components/
+    │   ├── dashboard/
     │   │   ├── CategoryChart.tsx
     │   │   ├── ExpenseList.tsx
     │   │   ├── RecurringCostsList.tsx
     │   │   └── SpendingChart.tsx
-    │   ├── contexts/
-    │   │   └── AuthContext.tsx    # Authentication state
-    │   ├── pages/
-    │   │   ├── Dashboard.tsx      # Main application page
-    │   │   ├── Login.tsx
-    │   │   └── Register.tsx
-    │   ├── services/
-    │   │   └── api.ts             # API client
-    │   ├── types/
-    │   │   └── index.ts           # TypeScript types
-    │   ├── utils/
-    │   │   └── categories.ts      # Expense categories & colors
-    │   ├── App.tsx                # Route configuration
-    │   └── main.tsx               # App entry point
+    │   └── ui/
+    │       ├── AddExpenseModal.tsx
+    │       ├── AddRecurringModal.tsx
+    │       └── BudgetSettings.tsx
+    ├── contexts/
+    │   └── AuthContext.tsx       # Authentication state
+    ├── lib/
+    │   └── api.ts                # API client
+    ├── types/
+    │   └── index.ts              # TypeScript types
+    ├── utils/
+    │   └── categories.ts         # Expense categories & colors
     └── package.json
 ```
 
 ## API Endpoints
 
+All endpoints (except auth) require JWT authentication and automatically filter by logged-in user.
+
 ### Authentication
 - `POST /api/auth/register` - Create new account
 - `POST /api/auth/login` - Login
 
-### Expenses
-- `GET /api/expenses` - Get all expenses
-- `GET /api/expenses/range?start_date=&end_date=` - Get expenses by date range
-- `POST /api/expenses` - Create expense
-- `PUT /api/expenses/:id` - Update expense
-- `DELETE /api/expenses/:id` - Delete expense
+### Expenses (User-Filtered)
+- `GET /api/expenses` - Get all YOUR expenses
+- `GET /api/expenses/range?start_date=&end_date=` - Get YOUR expenses by date range
+- `POST /api/expenses` - Create expense (automatically tagged with your user ID)
+- `PUT /api/expenses/:id` - Update YOUR expense
+- `DELETE /api/expenses/:id` - Delete YOUR expense
 
-### Recurring Costs
-- `GET /api/recurring` - Get all recurring costs
-- `POST /api/recurring` - Create recurring cost
-- `PUT /api/recurring/:id` - Update recurring cost
-- `DELETE /api/recurring/:id` - Delete recurring cost
+### Recurring Costs (User-Filtered)
+- `GET /api/recurring` - Get all YOUR recurring costs
+- `POST /api/recurring` - Create recurring cost (automatically tagged with your user ID)
+- `PUT /api/recurring/:id` - Update YOUR recurring cost
+- `DELETE /api/recurring/:id` - Delete YOUR recurring cost
 
-### Budget
-- `GET /api/budget` - Get budget settings
-- `PUT /api/budget` - Update budget settings
-- `GET /api/budget/summary/:year/:month` - Get spending summary for month
+### Budget (User-Filtered)
+- `GET /api/budget` - Get YOUR budget settings
+- `PUT /api/budget` - Update YOUR budget settings
+- `GET /api/budget/summary/:year/:month` - Get YOUR spending summary for month
 
 ## Development
 
@@ -199,10 +240,19 @@ npm start      # Run compiled code
 
 ```bash
 cd frontend
-npm run dev    # Start Vite dev server
+npm run dev    # Start Next.js dev server with Turbopack
 npm run build  # Build for production
-npm run preview # Preview production build
+npm start      # Run production build
 ```
+
+## Security & Privacy
+
+- All passwords are hashed with bcryptjs before storage
+- JWT tokens are used for authentication (7-day expiration)
+- All database queries filter by user ID to ensure data isolation
+- Each user can ONLY access their own data
+- SQL injection protection via prepared statements
+- Foreign key constraints ensure data integrity
 
 ## Production Deployment
 
@@ -210,7 +260,7 @@ npm run preview # Preview production build
 
 1. Set environment variables:
    - `PORT`: Server port (default: 3000)
-   - `JWT_SECRET`: Strong secret key for JWT tokens
+   - `JWT_SECRET`: Strong secret key for JWT tokens (REQUIRED - use a random 64+ character string)
 
 2. Build and start:
    ```bash
@@ -220,12 +270,22 @@ npm run preview # Preview production build
 
 ### Frontend
 
-1. Update `.env` with production API URL
+1. Update `.env.local` with production API URL:
+   ```
+   NEXT_PUBLIC_API_URL=https://your-api-domain.com/api
+   ```
+
 2. Build:
    ```bash
    npm run build
    ```
-3. Deploy the `dist` folder to your hosting service
+
+3. Start production server:
+   ```bash
+   npm start
+   ```
+
+   Or deploy to Vercel/Netlify for automatic deployment.
 
 ## License
 
