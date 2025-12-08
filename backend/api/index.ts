@@ -37,14 +37,14 @@ const corsOptions = {
 app.use(cors(corsOptions));
 app.use(express.json());
 
-// Routes
-app.use('/api/auth', authRoutes);
-app.use('/api/expenses', expensesRoutes);
-app.use('/api/recurring', recurringRoutes);
-app.use('/api/budget', budgetRoutes);
+// Routes - no /api prefix needed since file is already at /api/index.ts
+app.use('/auth', authRoutes);
+app.use('/expenses', expensesRoutes);
+app.use('/recurring', recurringRoutes);
+app.use('/budget', budgetRoutes);
 
 // Health check
-app.get('/api/health', (req, res) => {
+app.get('/health', (req, res) => {
   res.json({ status: 'ok', message: 'Budgify API is running' });
 });
 
