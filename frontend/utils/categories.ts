@@ -1,0 +1,31 @@
+export const EXPENSE_CATEGORIES = [
+  'Housing',
+  'Transportation',
+  'Food & Dining',
+  'Utilities',
+  'Healthcare',
+  'Entertainment',
+  'Shopping',
+  'Personal Care',
+  'Education',
+  'Travel',
+  'Insurance',
+  'Savings',
+  'Other',
+];
+
+export const CATEGORY_COLORS: Record<string, string> = {
+  'Housing': '#3b82f6',
+  'Transportation': '#10b981',
+  'Food & Dining': '#f59e0b',
+  'Utilities': '#6366f1',
+  'Healthcare': '#ec4899',
+  'Entertainment': '#8b5cf6',
+  'Shopping': '#14b8a6',
+  'Personal Care': '#f97316',
+  'Education': '#06b6d4',
+  'Travel': '#84cc16',
+  'Insurance': '#ef4444',
+  'Savings': '#22c55e',
+  'Other': '#64748b',
+};
