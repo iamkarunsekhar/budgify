@@ -42,9 +42,12 @@ def python_to_dynamodb(obj: Any) -> Any:
 
 
 def dynamodb_to_python(obj: Any) -> Any:
-    """Convert DynamoDB types to Python types (Decimal -> float)"""
+    """Convert DynamoDB types to Python types (Decimal -> int or float)"""
     if isinstance(obj, Decimal):
-        # Convert to float for JSON serialization
+        # If it's a whole number (like IDs), convert to int
+        if obj % 1 == 0:
+            return int(obj)
+        # Otherwise convert to float for amounts with decimals
         return float(obj)
     elif isinstance(obj, dict):
         return {k: dynamodb_to_python(v) for k, v in obj.items()}
