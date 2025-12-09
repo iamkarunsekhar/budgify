@@ -64,7 +64,7 @@ async def general_exception_handler(request: Request, exc: Exception):
 async def startup_event():
     logger.info("=" * 50)
     logger.info("Budgify API Starting Up")
-    logger.info(f"FastAPI version: {FastAPI.__version__}")
+    logger.info("All routes loaded successfully")
     logger.info("=" * 50)
 
 
