@@ -51,6 +51,7 @@ class RecurringCostCreate(BaseModel):
     amount: float
     category: str
     frequency: str  # 'monthly' or 'annual'
+    start_date: Optional[str] = None  # ISO date string
 
 
 class RecurringCostUpdate(BaseModel):
@@ -58,6 +59,7 @@ class RecurringCostUpdate(BaseModel):
     amount: Optional[float] = None
     category: Optional[str] = None
     frequency: Optional[str] = None
+    start_date: Optional[str] = None
 
 
 class RecurringCost(BaseModel):
@@ -67,6 +69,7 @@ class RecurringCost(BaseModel):
     amount: float
     category: str
     frequency: str
+    start_date: str
     created_at: str
 
 

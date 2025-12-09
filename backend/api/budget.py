@@ -128,13 +128,17 @@ async def get_spending_summary(
     return {
         'total_spent': total_spent,
         'monthly_budget': monthly_budget,
+        'budget_limit': monthly_budget,  # Frontend expects this name
         'remaining': monthly_budget - total_spent if monthly_budget else 0,
         'percentage_used': (total_spent / monthly_budget * 100) if monthly_budget > 0 else 0,
         'category_breakdown': category_totals,
         'monthly_recurring': monthly_recurring,
+        'recurring_costs': monthly_recurring,  # Frontend expects this name (as a number)
         'total_with_recurring': total_spent + monthly_recurring,
         'expense_count': len(month_expenses),
+        'transaction_count': len(month_expenses),  # Frontend expects this name
+        'is_over_budget': total_spent > monthly_budget if monthly_budget > 0 else False,
         'daily_spending': daily_data,
         'expenses': month_expenses,
-        'recurring_costs': recurring_costs
+        'recurring_costs_list': recurring_costs  # The actual array of recurring costs
     }
