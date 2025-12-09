@@ -132,6 +132,7 @@ async def get_spending_summary(
         'percentage_used': (total_spent / monthly_budget * 100) if monthly_budget > 0 else 0,
         'category_breakdown': category_totals,
         'monthly_recurring': monthly_recurring,
+        'total_with_recurring': total_spent + monthly_recurring,
         'expense_count': len(month_expenses),
         'daily_spending': daily_data,
         'expenses': month_expenses,
