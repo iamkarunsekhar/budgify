@@ -43,6 +43,9 @@ async def create_new_recurring_cost(
     """Create a new recurring cost"""
     user_id = current_user['user_id']
 
+    # Use provided start_date or default to current date
+    start_date = recurring_data.start_date if recurring_data.start_date else get_current_timestamp().split('T')[0]
+
     recurring = {
         'id': generate_id(),
         'user_id': user_id,
@@ -50,6 +53,7 @@ async def create_new_recurring_cost(
         'amount': recurring_data.amount,
         'category': recurring_data.category,
         'frequency': recurring_data.frequency,
+        'start_date': start_date,
         'created_at': get_current_timestamp()
     }
 
@@ -80,6 +84,8 @@ async def update_recurring_cost_by_id(
         updates['category'] = recurring_data.category
     if recurring_data.frequency is not None:
         updates['frequency'] = recurring_data.frequency
+    if recurring_data.start_date is not None:
+        updates['start_date'] = recurring_data.start_date
 
     if not updates:
         raise HTTPException(status_code=400, detail="No updates provided")
