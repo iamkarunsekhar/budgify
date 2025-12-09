@@ -43,18 +43,20 @@ This makes Budgify perfect for couples who want to:
 - **date-fns** for date manipulation
 
 ### Backend
-- **Node.js** with Express
-- **TypeScript** for type safety
-- **SQLite** (better-sqlite3) for database
-- **JWT** for authentication
-- **bcryptjs** for password hashing
+- **Python 3.11+** with FastAPI
+- **AWS DynamoDB** for database (NoSQL)
+- **boto3** for AWS SDK
+- **PyJWT** for authentication
+- **passlib** with bcrypt for password hashing
 
 ## Getting Started
 
 ### Prerequisites
 
-- Node.js (v18 or higher)
+- Python 3.11 or higher
+- Node.js (v18 or higher) for frontend
 - npm or yarn
+- AWS Account with DynamoDB access (free tier is sufficient)
 
 ### Installation
 
@@ -64,46 +66,60 @@ This makes Budgify perfect for couples who want to:
    cd budgify
    ```
 
-2. **Set up the backend**
+2. **Set up AWS DynamoDB**
+   - Create an AWS account if you don't have one
+   - Create an IAM user with DynamoDB permissions
+   - Get your AWS Access Key ID and Secret Access Key
+   - See `DEPLOYMENT.md` for detailed instructions
+
+3. **Set up the backend**
    ```bash
    cd backend
-   npm install
+
+   # Install Python dependencies
+   pip install -r requirements.txt
 
    # Create .env file
    cp .env.example .env
-   # Edit .env and set your JWT_SECRET to a strong random string
+   # Edit .env and add:
+   #   - JWT_SECRET (generate with: python -c "import secrets; print(secrets.token_hex(64))")
+   #   - AWS credentials (AWS_ACCESS_KEY_ID, AWS_SECRET_ACCESS_KEY)
+   #   - AWS_REGION (e.g., us-east-1)
+
+   # Create DynamoDB tables
+   python setup_dynamodb.py
 
    # Start the backend server
-   npm run dev
+   uvicorn api.index:app --reload --port 8000
    ```
 
-   The backend will run on `http://localhost:3000`
+   The backend will run on `http://localhost:8000`
 
-3. **Set up the frontend** (in a new terminal)
+4. **Set up the frontend** (in a new terminal)
    ```bash
    cd frontend
    npm install
 
    # Create .env.local file
    cp .env.example .env.local
-   # The default API URL should work if backend is on port 3000
+   # Update NEXT_PUBLIC_API_URL=http://localhost:8000
 
    # Start the frontend dev server
    npm run dev
    ```
 
-   The frontend will run on `http://localhost:3001`
+   The frontend will run on `http://localhost:3000`
 
 ### First Time Setup (For Couples)
 
 #### Partner 1:
-1. Navigate to `http://localhost:3001`
+1. Navigate to `http://localhost:3000`
 2. Click "Sign Up" to create your account
 3. Set your monthly budget limit in "Budget Settings"
 4. Start adding your expenses and recurring costs!
 
 #### Partner 2:
-1. Navigate to `http://localhost:3001`
+1. Navigate to `http://localhost:3000`
 2. Click "Sign Up" to create a separate account (use a different email)
 3. Set your own monthly budget limit in "Budget Settings"
 4. Start tracking your own expenses independently!
@@ -152,21 +168,19 @@ Use the month navigation buttons to:
 ```
 budgify/
 ├── backend/
-│   ├── src/
-│   │   ├── db/
-│   │   │   └── database.ts       # Database initialization
-│   │   ├── middleware/
-│   │   │   └── auth.ts           # JWT authentication
-│   │   ├── routes/
-│   │   │   ├── auth.ts           # Login/register endpoints
-│   │   │   ├── expenses.ts       # Expense CRUD (user-filtered)
-│   │   │   ├── recurring.ts      # Recurring costs CRUD (user-filtered)
-│   │   │   └── budget.ts         # Budget settings & summaries (user-filtered)
-│   │   ├── types/
-│   │   │   └── index.ts          # TypeScript types
-│   │   └── index.ts              # Server entry point
-│   ├── data/                     # SQLite database (auto-created)
-│   └── package.json
+│   ├── api/
+│   │   ├── database.py           # DynamoDB database layer
+│   │   ├── models.py             # Pydantic models
+│   │   ├── middleware.py         # JWT authentication
+│   │   ├── auth.py               # Login/register endpoints
+│   │   ├── expenses.py           # Expense CRUD (user-filtered)
+│   │   ├── recurring.py          # Recurring costs CRUD (user-filtered)
+│   │   ├── budget.py             # Budget settings & summaries (user-filtered)
+│   │   └── index.py              # FastAPI app entry point
+│   ├── setup_dynamodb.py         # DynamoDB table creation script
+│   ├── requirements.txt          # Python dependencies
+│   ├── vercel.json               # Vercel deployment config
+│   └── .env                      # Environment variables
 │
 └── frontend/
     ├── app/
@@ -208,22 +222,23 @@ All endpoints (except auth) require JWT authentication and automatically filter 
 - `POST /api/auth/login` - Login
 
 ### Expenses (User-Filtered)
-- `GET /api/expenses` - Get all YOUR expenses
-- `GET /api/expenses/range?start_date=&end_date=` - Get YOUR expenses by date range
-- `POST /api/expenses` - Create expense (automatically tagged with your user ID)
-- `PUT /api/expenses/:id` - Update YOUR expense
-- `DELETE /api/expenses/:id` - Delete YOUR expense
+- `GET /expenses` - Get all YOUR expenses
+- `GET /expenses/{id}` - Get a specific expense
+- `POST /expenses` - Create expense (automatically tagged with your user ID)
+- `PUT /expenses/{id}` - Update YOUR expense
+- `DELETE /expenses/{id}` - Delete YOUR expense
 
 ### Recurring Costs (User-Filtered)
-- `GET /api/recurring` - Get all YOUR recurring costs
-- `POST /api/recurring` - Create recurring cost (automatically tagged with your user ID)
-- `PUT /api/recurring/:id` - Update YOUR recurring cost
-- `DELETE /api/recurring/:id` - Delete YOUR recurring cost
+- `GET /recurring` - Get all YOUR recurring costs
+- `GET /recurring/{id}` - Get a specific recurring cost
+- `POST /recurring` - Create recurring cost (automatically tagged with your user ID)
+- `PUT /recurring/{id}` - Update YOUR recurring cost
+- `DELETE /recurring/{id}` - Delete YOUR recurring cost
 
 ### Budget (User-Filtered)
-- `GET /api/budget` - Get YOUR budget settings
-- `PUT /api/budget` - Update YOUR budget settings
-- `GET /api/budget/summary/:year/:month` - Get YOUR spending summary for month
+- `GET /budget/settings` - Get YOUR budget settings
+- `POST /budget/settings` - Update YOUR budget settings
+- `GET /budget/spending/{year}/{month}` - Get YOUR spending summary for month
 
 ## Development
 
@@ -231,9 +246,14 @@ All endpoints (except auth) require JWT authentication and automatically filter 
 
 ```bash
 cd backend
-npm run dev    # Start with nodemon (auto-reload)
-npm run build  # Compile TypeScript
-npm start      # Run compiled code
+# Install dependencies
+pip install -r requirements.txt
+
+# Run with auto-reload
+uvicorn api.index:app --reload --port 8000
+
+# Or use the Python uvicorn directly
+python -m uvicorn api.index:app --reload --port 8000
 ```
 
 ### Frontend Development
@@ -247,45 +267,47 @@ npm start      # Run production build
 
 ## Security & Privacy
 
-- All passwords are hashed with bcryptjs before storage
+- All passwords are hashed with passlib/bcrypt before storage
 - JWT tokens are used for authentication (7-day expiration)
-- All database queries filter by user ID to ensure data isolation
+- All DynamoDB queries filter by user ID (partition key) to ensure data isolation
 - Each user can ONLY access their own data
-- SQL injection protection via prepared statements
-- Foreign key constraints ensure data integrity
+- NoSQL injection protection via parameterized queries
+- FastAPI automatic request validation with Pydantic models
+- AWS IAM credentials for secure DynamoDB access
 
 ## Production Deployment
 
-### Backend
+This application is designed to deploy on **Vercel** (frontend + backend) with **AWS DynamoDB** as the database.
 
-1. Set environment variables:
-   - `PORT`: Server port (default: 3000)
-   - `JWT_SECRET`: Strong secret key for JWT tokens (REQUIRED - use a random 64+ character string)
+### Quick Deployment Steps
 
-2. Build and start:
-   ```bash
-   npm run build
-   npm start
-   ```
+1. **Set up AWS DynamoDB**
+   - Create IAM user with DynamoDB permissions
+   - Run `python setup_dynamodb.py` to create tables
+   - See `DEPLOYMENT.md` for detailed instructions
 
-### Frontend
+2. **Deploy Backend to Vercel**
+   - Connect your repository to Vercel
+   - Set environment variables in Vercel dashboard:
+     - `JWT_SECRET` - Generate with: `python -c "import secrets; print(secrets.token_hex(64))"`
+     - `AWS_ACCESS_KEY_ID` - Your AWS access key
+     - `AWS_SECRET_ACCESS_KEY` - Your AWS secret key
+     - `AWS_REGION` - e.g., `us-east-1`
+     - `CORS_ORIGIN` - Your frontend URL (e.g., `https://your-app.vercel.app`)
+     - DynamoDB table names (optional, uses defaults)
+   - Deploy the `/backend` directory
 
-1. Update `.env.local` with production API URL:
-   ```
-   NEXT_PUBLIC_API_URL=https://your-api-domain.com/api
-   ```
+3. **Deploy Frontend to Vercel**
+   - Set `NEXT_PUBLIC_API_URL` to your backend URL (e.g., `https://your-backend.vercel.app/api`)
+   - Deploy the `/frontend` directory
 
-2. Build:
-   ```bash
-   npm run build
-   ```
+See `DEPLOYMENT.md` for comprehensive deployment instructions.
 
-3. Start production server:
-   ```bash
-   npm start
-   ```
+### Costs
 
-   Or deploy to Vercel/Netlify for automatic deployment.
+- **DynamoDB**: Free tier covers ~25GB storage and 25 read/write units - more than enough for personal use
+- **Vercel**: Free tier includes hobby projects with generous limits
+- **Total**: $0/month for typical personal/couple usage
 
 ## License
 
