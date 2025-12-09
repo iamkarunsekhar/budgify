@@ -1,7 +1,6 @@
 from fastapi import APIRouter, HTTPException, Depends
 from datetime import datetime
 from typing import Dict, Any
-from .models import BudgetSettings, BudgetResponse
 from .database import (
     get_budget_settings,
     save_budget_settings,
@@ -10,11 +9,22 @@ from .database import (
     get_current_timestamp
 )
 from .middleware import get_current_user
+from pydantic import BaseModel
 
 router = APIRouter(prefix="/budget", tags=["budget"])
 
 
-@router.get("/settings", response_model=BudgetResponse)
+class BudgetSettingsRequest(BaseModel):
+    monthly_limit: float
+
+
+class BudgetSettingsResponse(BaseModel):
+    user_id: int
+    monthly_limit: float
+    updated_at: str
+
+
+@router.get("", response_model=BudgetSettingsResponse)
 async def get_budget(current_user: dict = Depends(get_current_user)):
     """Get budget settings for the authenticated user"""
     user_id = current_user['user_id']
@@ -23,12 +33,17 @@ async def get_budget(current_user: dict = Depends(get_current_user)):
     if not budget:
         raise HTTPException(status_code=404, detail="Budget settings not found")
 
-    return budget
+    # Convert monthly_budget to monthly_limit for frontend compatibility
+    return {
+        'user_id': budget['user_id'],
+        'monthly_limit': budget.get('monthly_budget', budget.get('monthly_limit', 0)),
+        'updated_at': budget['updated_at']
+    }
 
 
-@router.post("/settings", response_model=BudgetResponse)
+@router.put("", response_model=BudgetSettingsResponse)
 async def update_budget(
-    budget_data: BudgetSettings,
+    budget_data: BudgetSettingsRequest,
     current_user: dict = Depends(get_current_user)
 ):
     """Update budget settings"""
@@ -36,14 +51,21 @@ async def update_budget(
 
     budget = {
         'user_id': user_id,
-        'monthly_budget': budget_data.monthly_budget,
+        'monthly_budget': budget_data.monthly_limit,
+        'monthly_limit': budget_data.monthly_limit,  # Store both for compatibility
         'updated_at': get_current_timestamp()
     }
 
-    return save_budget_settings(budget)
+    saved_budget = save_budget_settings(budget)
+
+    return {
+        'user_id': saved_budget['user_id'],
+        'monthly_limit': budget_data.monthly_limit,
+        'updated_at': saved_budget['updated_at']
+    }
 
 
-@router.get("/spending/{year}/{month}")
+@router.get("/summary/{year}/{month}")
 async def get_spending_summary(
     year: int,
     month: int,
@@ -67,7 +89,7 @@ async def get_spending_summary(
 
     # Get budget settings
     budget = get_budget_settings(user_id)
-    monthly_budget = budget['monthly_budget'] if budget else 0
+    monthly_budget = budget.get('monthly_budget', budget.get('monthly_limit', 0)) if budget else 0
 
     # Calculate category breakdown
     category_totals = {}

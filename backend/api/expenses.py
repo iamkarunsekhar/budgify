@@ -1,5 +1,6 @@
-from fastapi import APIRouter, HTTPException, Depends
-from typing import List
+from fastapi import APIRouter, HTTPException, Depends, Query
+from typing import List, Optional
+from datetime import datetime
 from .models import ExpenseCreate, ExpenseUpdate, Expense
 from .database import (
     get_expenses_by_user,
@@ -13,6 +14,29 @@ from .database import (
 from .middleware import get_current_user
 
 router = APIRouter(prefix="/expenses", tags=["expenses"])
+
+
+@router.get("/range", response_model=List[Expense])
+async def get_expenses_by_range(
+    start_date: str = Query(..., description="Start date in ISO format"),
+    end_date: str = Query(..., description="End date in ISO format"),
+    current_user: dict = Depends(get_current_user)
+):
+    """Get expenses within a date range for the authenticated user"""
+    user_id = current_user['user_id']
+    all_expenses = get_expenses_by_user(user_id)
+
+    # Filter expenses by date range
+    filtered_expenses = []
+    for expense in all_expenses:
+        expense_date = datetime.fromisoformat(expense['date'].replace('Z', '+00:00'))
+        start = datetime.fromisoformat(start_date.replace('Z', '+00:00'))
+        end = datetime.fromisoformat(end_date.replace('Z', '+00:00'))
+
+        if start <= expense_date <= end:
+            filtered_expenses.append(expense)
+
+    return filtered_expenses
 
 
 @router.get("/", response_model=List[Expense])
