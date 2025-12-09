@@ -3,6 +3,7 @@ import boto3
 from boto3.dynamodb.conditions import Key
 from datetime import datetime
 from typing import Optional, List, Dict, Any
+from decimal import Decimal
 import time
 import random
 
@@ -29,6 +30,29 @@ recurring_table = dynamodb.Table(TABLES['recurring'])
 budget_table = dynamodb.Table(TABLES['budget'])
 
 
+def python_to_dynamodb(obj: Any) -> Any:
+    """Convert Python types to DynamoDB compatible types (float -> Decimal)"""
+    if isinstance(obj, float):
+        return Decimal(str(obj))
+    elif isinstance(obj, dict):
+        return {k: python_to_dynamodb(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [python_to_dynamodb(v) for v in obj]
+    return obj
+
+
+def dynamodb_to_python(obj: Any) -> Any:
+    """Convert DynamoDB types to Python types (Decimal -> float)"""
+    if isinstance(obj, Decimal):
+        # Convert to float for JSON serialization
+        return float(obj)
+    elif isinstance(obj, dict):
+        return {k: dynamodb_to_python(v) for k, v in obj.items()}
+    elif isinstance(obj, list):
+        return [dynamodb_to_python(v) for v in obj]
+    return obj
+
+
 def generate_id() -> int:
     """Generate a unique ID using timestamp and random number"""
     return int(time.time() * 1000) + random.randint(0, 999)
@@ -48,7 +72,7 @@ def get_user_by_email(email: str) -> Optional[Dict[str, Any]]:
         Limit=1
     )
     items = response.get('Items', [])
-    return items[0] if items else None
+    return dynamodb_to_python(items[0]) if items else None
 
 
 def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
@@ -59,18 +83,20 @@ def get_user_by_username(username: str) -> Optional[Dict[str, Any]]:
         Limit=1
     )
     items = response.get('Items', [])
-    return items[0] if items else None
+    return dynamodb_to_python(items[0]) if items else None
 
 
 def get_user_by_id(user_id: int) -> Optional[Dict[str, Any]]:
     """Get user by ID"""
     response = users_table.get_item(Key={'id': user_id})
-    return response.get('Item')
+    item = response.get('Item')
+    return dynamodb_to_python(item) if item else None
 
 
 def create_user(user_data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new user"""
-    users_table.put_item(Item=user_data)
+    dynamodb_data = python_to_dynamodb(user_data)
+    users_table.put_item(Item=dynamodb_data)
     return user_data
 
 
@@ -83,7 +109,7 @@ def get_expenses_by_user(user_id: int) -> List[Dict[str, Any]]:
     expenses = response.get('Items', [])
     # Sort by date descending
     expenses.sort(key=lambda x: x.get('date', ''), reverse=True)
-    return expenses
+    return dynamodb_to_python(expenses)
 
 
 def get_expense(user_id: int, expense_id: int) -> Optional[Dict[str, Any]]:
@@ -91,12 +117,14 @@ def get_expense(user_id: int, expense_id: int) -> Optional[Dict[str, Any]]:
     response = expenses_table.get_item(
         Key={'user_id': user_id, 'id': expense_id}
     )
-    return response.get('Item')
+    item = response.get('Item')
+    return dynamodb_to_python(item) if item else None
 
 
 def create_expense(expense_data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new expense"""
-    expenses_table.put_item(Item=expense_data)
+    dynamodb_data = python_to_dynamodb(expense_data)
+    expenses_table.put_item(Item=dynamodb_data)
     return expense_data
 
 
@@ -106,7 +134,10 @@ def update_expense(user_id: int, expense_id: int, updates: Dict[str, Any]) -> Di
     expr_values = {}
     expr_names = {}
 
-    for i, (key, value) in enumerate(updates.items()):
+    # Convert updates to DynamoDB types
+    updates_dynamodb = python_to_dynamodb(updates)
+
+    for i, (key, value) in enumerate(updates_dynamodb.items()):
         if key in ['date', 'name']:  # Reserved keywords
             attr_name = f"#attr{i}"
             attr_value = f":val{i}"
@@ -130,7 +161,7 @@ def update_expense(user_id: int, expense_id: int, updates: Dict[str, Any]) -> Di
         kwargs['ExpressionAttributeNames'] = expr_names
 
     response = expenses_table.update_item(**kwargs)
-    return response.get('Attributes', {})
+    return dynamodb_to_python(response.get('Attributes', {}))
 
 
 def delete_expense(user_id: int, expense_id: int) -> None:
@@ -144,7 +175,7 @@ def get_recurring_costs_by_user(user_id: int) -> List[Dict[str, Any]]:
     response = recurring_table.query(
         KeyConditionExpression=Key('user_id').eq(user_id)
     )
-    return response.get('Items', [])
+    return dynamodb_to_python(response.get('Items', []))
 
 
 def get_recurring_cost(user_id: int, recurring_id: int) -> Optional[Dict[str, Any]]:
@@ -152,12 +183,14 @@ def get_recurring_cost(user_id: int, recurring_id: int) -> Optional[Dict[str, An
     response = recurring_table.get_item(
         Key={'user_id': user_id, 'id': recurring_id}
     )
-    return response.get('Item')
+    item = response.get('Item')
+    return dynamodb_to_python(item) if item else None
 
 
 def create_recurring_cost(recurring_data: Dict[str, Any]) -> Dict[str, Any]:
     """Create a new recurring cost"""
-    recurring_table.put_item(Item=recurring_data)
+    dynamodb_data = python_to_dynamodb(recurring_data)
+    recurring_table.put_item(Item=dynamodb_data)
     return recurring_data
 
 
@@ -167,7 +200,10 @@ def update_recurring_cost(user_id: int, recurring_id: int, updates: Dict[str, An
     expr_values = {}
     expr_names = {}
 
-    for i, (key, value) in enumerate(updates.items()):
+    # Convert updates to DynamoDB types
+    updates_dynamodb = python_to_dynamodb(updates)
+
+    for i, (key, value) in enumerate(updates_dynamodb.items()):
         if key in ['name']:  # Reserved keywords
             attr_name = f"#attr{i}"
             attr_value = f":val{i}"
@@ -191,7 +227,7 @@ def update_recurring_cost(user_id: int, recurring_id: int, updates: Dict[str, An
         kwargs['ExpressionAttributeNames'] = expr_names
 
     response = recurring_table.update_item(**kwargs)
-    return response.get('Attributes', {})
+    return dynamodb_to_python(response.get('Attributes', {}))
 
 
 def delete_recurring_cost(user_id: int, recurring_id: int) -> None:
@@ -203,10 +239,12 @@ def delete_recurring_cost(user_id: int, recurring_id: int) -> None:
 def get_budget_settings(user_id: int) -> Optional[Dict[str, Any]]:
     """Get budget settings for a user"""
     response = budget_table.get_item(Key={'user_id': user_id})
-    return response.get('Item')
+    item = response.get('Item')
+    return dynamodb_to_python(item) if item else None
 
 
 def save_budget_settings(budget_data: Dict[str, Any]) -> Dict[str, Any]:
     """Save budget settings"""
-    budget_table.put_item(Item=budget_data)
+    dynamodb_data = python_to_dynamodb(budget_data)
+    budget_table.put_item(Item=dynamodb_data)
     return budget_data
